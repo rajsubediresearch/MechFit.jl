@@ -1,0 +1,6 @@
+name = "IdentifiabilityCheck"
+authors = ["Raj Subedi"]
+version = "0.0.1-demo"
+
+[compat]
+julia = "1.10"

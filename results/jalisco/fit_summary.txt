@@ -1,0 +1,20 @@
+Jalisco SEIR + vaccination fit (6 bands, per-band reporting)
+inputs: E:\Julia\EpiMech_demo\EpiMech\examples\..\data\jalisco
+
+q (transmission)         0.3163   [0.3153, 0.3172]
+reporting 0-4            0.0362   [0.0349, 0.0376]
+reporting 5-9            0.0135   [0.0129, 0.0142]
+reporting 10-19          0.0038   [0.0037, 0.0039]
+reporting 20-29          0.0063   [0.0060, 0.0065]
+reporting 30-49          0.0080   [0.0076, 0.0083]
+reporting 50+            0.0220   [0.0198, 0.0226]
+seed                    40.9882   [39.8261, 42.7408]
+
+R0 (NGM, EFFECTIVE): 1.9280
+  NOT measles' intrinsic R0 (12-18). Effective rate under
+  homogeneous within-band mixing.
+
+observed cases         : 7282
+model cases (reported) : 7341
+model INFECTIONS       : 963676
+implied attack rate    : 10.8%

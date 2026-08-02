@@ -1,0 +1,39 @@
+JALISCO MEASLES VACCINATION COUNTERFACTUAL (6 bands)
+================================================================
+
+inputs   : E:\Julia\EpiMech_demo\EpiMech\examples\..\data\jalisco
+scenario : campaign delayed 8 wk, intensity 1.0
+
+PRIMARY: averted CONFIRMED cases = 4161
+  relative reduction            = 27.7%
+  factual (with vax)            = 10857
+  counterfactual (no vax)       = 15018
+  observed                      = 7282
+
+SECONDARY: averted infections   = 316683
+  Assumption-dependent. Rests on rho ~ 1-4% and homogeneous
+  within-band mixing. Caveat heavily or omit.
+
+7×8 DataFrame
+ Row │ age_band  factual_cases  counterfactual_cases  averted_cases  averted_direct  averted_indirect  averted_infections  doses_given
+     │ String    Float64        Float64               Float64        Float64         Float64           Float64             Float64
+─────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   1 │ 0-4              2735.0                5127.0        2392.0           1904.0            489.0        66102.0        271495.0
+   2 │ 5-9              1412.0                1668.0         256.0             96.0            160.0        19006.0         32889.0
+   3 │ 10-19            1847.0                2079.0         232.0            185.0             47.0        60883.0        121119.0
+   4 │ 20-29            1922.0                2374.0         451.0            243.0            208.0        71727.0        206321.0
+   5 │ 30-49            2603.0                3372.0         769.0            470.0            299.0        96259.0        376414.0
+   6 │ 50+               339.0                 398.0          60.0              0.0             60.0         2705.0             0.0
+   7 │ TOTAL           10857.4               15018.0        4160.62          2898.2           1262.42           3.16683e5       1.00824e6
+
+DIRECT vs INDIRECT
+  Bands with zero doses still benefit: vaccinating other bands
+  lowers the force of infection reaching them via the contact
+  matrix. Direct and indirect interact in a nonlinear model, so
+  these are an attribution, not an exact accounting identity.
+
+ESTIMAND CAVEAT
+  'No campaign at all' extrapolates well outside the data. q was
+  also estimated IN THE PRESENCE of the campaign, so holding it
+  fixed while deleting the campaign partly deletes something
+  already absorbed into q.
