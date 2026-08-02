@@ -200,17 +200,35 @@ whatever version installs, that's the first thing to check.
 
 ## Known gaps / still open
 
-- Bootstrap (`bootstrap_seir`) currently only wired up for the
-  constant-beta `SEIRSpec`/`fit_seir` path -- extending it to
-  `TVSEIRSpec` is the same resample-and-refit loop, just calling
-  `fit_tv_seir` instead.
-- `seirv!` is forward-simulation only so far -- no fitting spec yet for
-  recovering a dosage schedule from real vaccination-campaign +
-  case-count data.
-- No real data plugged in yet (Jalisco measles / Bundibugyo Ebola are the
-  natural first real datasets to try once you point at the actual files).
-- No age structure / contact matrix yet -- flagged as a future extension
-  point in `interventions.jl`, not implemented.
+- **CI/PI coverage is under-nominal across multiple examples** (flu1918_report:
+  11.8%/47.1% actual vs. 95% nominal; plague: 22.9%/57.1% vs. 95% nominal) --
+  the bootstrap-derived uncertainty bands throughout this repo are
+  systematically too narrow. This is the most important open issue right
+  now, likely candidates: the `:poisson` error model most examples use is
+  probably underdispersed relative to real case-count noise (the partially-
+  wired `:negbin1` option is a natural first thing to try), the bootstrap
+  not capturing parameter correlation, or too few effective degrees of
+  freedom. Treat any CI/PI band in this repo with real skepticism until
+  this is resolved.
+- Bootstrap/CI-PI bands for the non-constant-beta variants (`TVSEIRSpec`,
+  `SmoothTVSEIRSpec`, `SEIRDSpec`) are each hand-rolled per example
+  (`flu1918_report_demo.jl`, `plague_bombay_demo.jl`) rather than a single
+  reusable function like `bootstrap_seir` -- worth consolidating once the
+  coverage issue above is understood, so the fix lands in one place.
+- `seirv!` is forward-simulation only -- no fitting spec yet for recovering
+  a dosage schedule from real vaccination-campaign + case-count data (the
+  Jalisco age-structured vaccination fitting is a different code path,
+  `age_structured.jl`/`jalisco_data.jl`, not `seirv!`).
 - `seirv!` is non-leaky (all-or-nothing vaccine efficacy) -- a leaky
   variant would need a separate "vaccinated but still partially
   susceptible" flow.
+- Datasets from the BayesianFitForecast survey not yet brought in: Cumberland
+  1918 flu (longer daily series, reuses existing SEIR), Switzerland
+  (SEIUHRC, unreported+hospitalized compartments, power-law mixing), COVID
+  (SEIURC). Bundibugyo Ebola (from an earlier, separate survey) also still
+  unexplored.
+- Age structure / contact matrix: **implemented**, not a gap -- see
+  `age_structured.jl` + `jalisco_data.jl`, exercised by all three
+  `jalisco_*.jl` examples with the real 6x6 Jalisco contact matrix. (An
+  earlier version of this README listed this as not-yet-done; that was
+  stale and has been corrected.)

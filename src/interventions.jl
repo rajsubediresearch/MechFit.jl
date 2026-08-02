@@ -49,6 +49,14 @@ function weekly_schedule(weekly_values::Vector{<:Real}; week_length::Real=7.0, s
 end
 
 # --- Future extension point (not implemented yet) ------------------------
+# NOTE: a STATIC (non-time-varying) contact matrix IS implemented -- see
+# age_structured.jl / simulate_epidemic_age, exercised by the real Jalisco
+# 6x6 contact matrix in all three jalisco_*.jl examples. What's described
+# below is different and still unbuilt: a TIME-VARYING contact matrix
+# (e.g. mobility data shifting who-contacts-whom week to week), via this
+# file's StepSchedule/SmoothTransition abstraction rather than a fixed
+# matrix passed once at simulate_epidemic_age's construction.
+#
 # For age-/group-structured models, β becomes a contact MATRIX rather than a
 # scalar, and a "ContactMatrixSchedule" would hold a StepSchedule per
 # matrix entry (or a single schedule of a scalar multiplier applied to a

@@ -1,0 +1,210 @@
+=====================================================================
+EPIMECH TESTING CHECKLIST — full rerun with --threads=21
+=====================================================================
+
+SETUP (once):
+  cd E:\Julia\EpiMech_demo\EpiMech
+  julia --project=. --threads=21
+using Pkg
+Pkg.instantiate()
+
+  Then verify:
+  julia> Threads.nthreads()
+  -> should print 21
+
+=====================================================================
+OPTIONAL: suppress dt_NaN warning spam before a bootstrap run
+=====================================================================
+  =====================================================================
+STRONGER dt_NaN suppression (module-filtering logger)
+=====================================================================
+  Type this whole block at the julia> prompt, once per session,
+  before running any include(...). It replaces the simple
+  disable_logging approach from before -- use this one instead.
+
+  julia> using Logging
+
+  julia> struct QuietSciMLLogger <: Logging.AbstractLogger
+             inner::Logging.AbstractLogger
+         end
+         Logging.min_enabled_level(l::QuietSciMLLogger) = Logging.min_enabled_level(l.inner)
+         Logging.catch_exceptions(l::QuietSciMLLogger) = Logging.catch_exceptions(l.inner)
+         function Logging.shouldlog(l::QuietSciMLLogger, level, _module, group, id)
+             modname = _module === nothing ? "" : string(_module)
+             if occursin("OrdinaryDiffEq", modname) || occursin("SciMLBase", modname)
+                 return false
+             end
+             return Logging.shouldlog(l.inner, level, _module, group, id)
+         end
+         Logging.handle_message(l::QuietSciMLLogger, args...; kwargs...) =
+             Logging.handle_message(l.inner, args...; kwargs...)
+
+  julia> global_logger(QuietSciMLLogger(current_logger()))
+
+  This filters out any log message whose SOURCE MODULE name contains
+  "OrdinaryDiffEq" or "SciMLBase" -- exactly the two modules shown in
+  the warning stack traces -- while every other package's warnings
+  (and all genuine errors) still print normally.
+
+  To go back to normal logging in the same session:
+  julia> global_logger(ConsoleLogger())
+=====================================================================
+=====================================================================
+---------------------------------------------------------------------
+1. measles_seir_demo.jl  (fast, ~seconds)
+---------------------------------------------------------------------
+  julia> include("examples/measles_seir_demo.jl")
+
+  CHECK: fitted beta close to true beta, R0 close to true R0
+  CHECK: results/measles_seir_demo/ contains:
+    synthetic_fit.csv, recovery_check.csv, recovery_fit.png
+
+---------------------------------------------------------------------
+2. vaccination_demo.jl  (fast, ~seconds, no fitting, no threading benefit)
+---------------------------------------------------------------------
+  julia> include("examples/vaccination_demo.jl")
+
+  CHECK: peak_I with vaccination well below peak_I without
+  CHECK: results/vaccination_demo/ contains:
+    summary.csv, infectious_over_time.csv, comparison.png
+
+---------------------------------------------------------------------
+3. age_structured_smoke_test.jl  (fast, ~seconds)
+---------------------------------------------------------------------
+  julia> include("examples/age_structured_smoke_test.jl")
+
+  CHECK: prints "SMOKE TEST PASSED" with no assertion errors
+  CHECK: results/age_structured_smoke_test/smoke_test_summary.csv exists
+
+---------------------------------------------------------------------
+4. intervention_demo.jl  (moderate — includes a 100-draw bootstrap)
+---------------------------------------------------------------------
+  julia> include("examples/intervention_demo.jl")
+
+  CHECK: Scenario A beta2 recovery poor (expected — known depletion issue)
+  CHECK: Scenario B beta2 recovers well (close to true beta2)
+  CHECK: NLL-at-true vs NLL-at-fitted comparison prints as before
+  CHECK: results/intervention_demo/ contains 9 files:
+    scenarioA_params.csv, scenarioA_fit.csv, scenarioA_fit.png,
+    scenarioB_params.csv, scenarioB_fit.csv, scenarioB_fit.png,
+    bootstrap_params.csv, bootstrap_samples.csv, bootstrap_histogram.png
+
+---------------------------------------------------------------------
+5. flu1918_real_data_demo.jl  (fast — bug-fix verification only)
+---------------------------------------------------------------------
+  julia> include("examples/flu1918_real_data_demo.jl")
+
+  CHECK: NO ERROR at the end (this is the file where the mae-shadowing
+  bug was just fixed — previously this line would NOT have crashed
+  before, since it never called mae() afterward, so this is really
+  just confirming nothing else broke)
+  CHECK: R0 near 3.09 reference, forecast table prints normally
+  (no results folder for this one — intentionally left as the original
+  lightweight script; flu1918_report_demo.jl below is the full version)
+
+---------------------------------------------------------------------
+6. flu1918_report_demo.jl  (moderate — 200-draw bootstrap, now threaded)
+---------------------------------------------------------------------
+  julia> include("examples/flu1918_report_demo.jl")
+
+  CHECK: calibration vs forecast MAE/WIS/coverage table prints
+  CHECK: forecast_metrics_by_horizon.csv table prints (1..13 days ahead)
+  CHECK: "Saved full results bundle -> ...run_bundle.jld2" appears
+  CHECK: results/flu1918/ contains (should be MORE files than before):
+    params.csv, calibration_fit.csv, forecast.csv, bootstrap_samples.csv,
+    performance_metrics.csv, forecast_metrics_by_horizon.csv,
+    fit.png, forecast.png, beta_histogram.png, run_bundle.jld2
+
+  OPTIONAL verify the bundle actually reloads:
+  julia> using JLD2
+  julia> b = load("results/flu1918/run_bundle.jld2", "bundle")
+  julia> b.spec   -> should print the SEIRSpec used
+
+---------------------------------------------------------------------
+7. flu1918_tv_demo.jl  (fast-moderate, now threaded multistart)
+---------------------------------------------------------------------
+  julia> include("examples/flu1918_tv_demo.jl")
+
+  CHECK: 2-segment MAE still ~199.8ish, constant-beta MAE ~609.1ish
+  CHECK: results/flu1918_tv/ contains:
+    params_tv.csv, params_const.csv, fit_tv.csv, fit_const.csv,
+    model_comparison.csv, fit_comparison.png
+
+---------------------------------------------------------------------
+8. flu1918_breakpoint_search_demo.jl  (SHOULD BE NOTICEABLY FASTER now
+   — 16 breakpoints x threaded multistart, this was the slowest one)
+---------------------------------------------------------------------
+  julia> include("examples/flu1918_breakpoint_search_demo.jl")
+
+  CHECK: best breakpoint still ~day 31, MAE ~116.2ish
+  CHECK: NOTE — printed lines may appear in a different/jumbled order
+  now (threads finishing out of sequence) — that's expected, not a bug
+  CHECK: results/flu1918_breakpoint_search/ contains:
+    sweep_results.csv, best_params.csv, best_fit.csv,
+    mae_vs_breakpoint.png, best_fit.png
+
+---------------------------------------------------------------------
+9. flu1918_smooth_beta_demo.jl  (fast-moderate, now threaded multistart)
+---------------------------------------------------------------------
+  julia> include("examples/flu1918_smooth_beta_demo.jl")
+
+  CHECK: MAE ~92.6ish, beta declining smoothly from ~0.79 to ~0.065
+  CHECK: results/flu1918_smooth_beta/ contains:
+    params.csv, fit.csv, performance_metrics.csv, fit_and_beta.png
+
+---------------------------------------------------------------------
+10. plague_bombay_demo.jl  (moderate — should be faster than last time,
+    both the point fit AND the bootstrap are now threaded)
+---------------------------------------------------------------------
+  julia> include("examples/plague_bombay_demo.jl")
+
+  CHECK: NO CRASH this time (mae-shadowing bug fixed)
+  CHECK: watch whether retcode says "Success" now instead of "MaxIters"
+  CHECK: watch whether the bootstrap CI for beta now actually CONTAINS
+  the point estimate (it didn't last run — worth specifically comparing)
+  CHECK: results/plague_bombay/ contains (should be MORE than before):
+    params.csv, fit.csv, performance_metrics.csv, fit.png,
+    run_bundle.jld2   <-- this is the new one, confirm it's actually there
+
+---------------------------------------------------------------------
+11. jalisco_fit.jl  (SHOULD BE NOTICEABLY FASTER — both multistart and
+    bootstrap threaded, plus a real RNG bug was fixed here)
+---------------------------------------------------------------------
+  julia> include("examples/jalisco_fit.jl")
+
+  CHECK: q, R0, reporting fractions similar to before (q~0.316, R0~1.93)
+  CHECK: bootstrap CIs look reasonable (roughly similar width to before)
+  CHECK: results/jalisco/ contains same files as before:
+    params.csv, fit_vs_data.png, fit_summary.txt
+
+---------------------------------------------------------------------
+12. jalisco_counterfactual.jl  (moderate, needs jalisco_fit.jl run first
+    — decomposition loop now threaded)
+---------------------------------------------------------------------
+  julia> include("examples/jalisco_counterfactual.jl")
+
+  CHECK: averted cases / relative reduction similar to before (~51%ish)
+  CHECK: consistency check still passes (no [!] warning for 50+ band)
+  CHECK: results/jalisco_scenarios/ contains scenario subfolders +
+    scenario_comparison.csv + scenario_comparison_plot.png
+
+---------------------------------------------------------------------
+13. jalisco_uncertainty.jl  (SHOULD BE MUCH FASTER — was the slowest
+    sequential one before, now fully threaded)
+---------------------------------------------------------------------
+  julia> include("examples/jalisco_uncertainty.jl")
+
+  CHECK: compare the printed "done in X.Xs" against how long this took
+  last time (should be dramatically shorter with 21 threads)
+  CHECK: results/jalisco_scenarios/baseline/ (or whatever scenario name)
+    contains averted_summary.csv, averted_distribution.csv,
+    uncertainty_plot.png, uncertainty_by_age.png
+
+=====================================================================
+GENERAL THINGS TO WATCH FOR ACROSS ALL OF THEM:
+- Any ERROR at all — paste the full stack trace back
+- Printed numeric results wildly different from prior runs (flag it —
+  could be a real bug even if it doesn't crash)
+- "dt_NaN" warnings are still expected/harmless wherever multistart
+  restarts sample a bad point — not a new problem
+=====================================================================
