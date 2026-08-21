@@ -1,234 +1,237 @@
-# EpiMech (demo skeleton)
+# MechFit.jl
 
-Mechanistic-compartmental counterpart to `GrowthFit.jl` -- SIR/SEIR/SEIRV
-models with constant OR time-varying parameters, fit with the same
-"fixed vs. free parameters, explicit bounds, explicit error model"
-convention as GrowthFit.
+A Julia toolbox for mechanistic compartmental epidemic models —
+SIR/SEIR-family ODE models with constant, piecewise, and smoothly
+time-varying transmission rates, extended variants (death-fitting SEIRD,
+age-structured SEIR with vaccination), and a consistent fitting →
+bootstrap → forecast → reporting pipeline built on top.
 
-**Rename before this goes anywhere near a public repo** -- "EpiMech" is
-still just a placeholder.
+It's the mechanistic counterpart to `GrowthFit.jl`, a sibling package
+for phenomenological (curve-shape) growth-model fitting: where
+GrowthFit fits the *shape* of an epidemic curve directly, MechFit fits
+the underlying transmission dynamics that produce that shape.
 
-## Layout
+> **Naming note:** the package internals (`Project.toml`'s `name` field,
+> the `module EpiMech` declaration, and every `using .EpiMech` in the
+> examples) still say `EpiMech`, the working name used during initial
+> development. The repository itself is `MechFit.jl`. Renaming the
+> internals to match is a planned, tracked cleanup — not yet done. Until
+> then, `EpiMech` in code and `MechFit.jl` in the repo name refer to the
+> same package.
 
-```
-EpiMech/
-├── Project.toml                 # main environment: OrdinaryDiffEq, Optimization, NLopt, Distributions
-├── src/
-│   ├── EpiMech.jl                # module entry point (include order matters -- see comments)
-│   ├── interventions.jl          # StepSchedule: generic piecewise-constant time-varying parameter
-│   ├── models.jl                 # sir!, seir!, seirs! (constant-param),
-│   │                              # seir_tv! (time-varying beta), seirv! (+ vaccination compartment)
-│   ├── fit.jl                    # SEIRSpec, fit_seir -- constant-beta point fitting
-│   ├── tv_fit.jl                 # TVSEIRSpec, fit_tv_seir -- piecewise-beta point fitting
-│   ├── smooth_tv_fit.jl          # SmoothTVSEIRSpec, fit_smooth_tv_seir -- smooth exponential-
-│   │                              # transition beta (from BayesianFitForecast), no step discontinuity
-│   ├── seird_fit.jl              # SEIRDSpec, fit_seird -- death-fitting SEIRD (seird! in models.jl),
-│   │                              # ported from BayesianFitForecast's plague model
-│   ├── metrics.jl                 # mae, aicc, weighted_interval_score, interval_coverage,
-│   │                              # save_performance_metrics_csv (template pattern, see below)
-│   ├── horizon_metrics.jl         # forecast_metrics_by_horizon -- per-horizon (expanding-window)
-│   │                              # forecast performance, ported from the MATLAB toolbox's
-│   │                              # computeforecastperformance.m
-│   ├── bootstrap.jl               # bootstrap_seir -- parametric bootstrap / 95% CIs
-│   ├── reporting.jl               # save_*_csv, plot_fit, plot_forecast, plot_bootstrap_histogram
-│   └── age_structured.jl          # VaxSchedule, simulate_epidemic_age, R0_ngm
-│                                   # (age-structured SEIR + time-varying vaccination,
-│                                   #  ported from the Python Jalisco measles pipeline)
-├── data/
-│   └── curve-flu1918SF.txt       # real 1918 SF flu incidence (from the MATLAB QuantDiffForecast toolbox)
-├── results/                       # created on demand by flu1918_report_demo.jl -- gitignore this
-│   └── flu1918/                   # params.csv, calibration_fit.csv, forecast.csv,
-│                                   # bootstrap_samples.csv, fit.png, forecast.png, beta_histogram.png
-├── examples/
-│   ├── measles_seir_demo.jl      # constant-beta recovery test (already run, works)
-│   ├── intervention_demo.jl      # two-segment beta recovery (pre/post intervention) + bootstrap demo
-│   └── vaccination_demo.jl       # seirv! forward-simulation mechanics check (no fitting yet)
-└── checks/
-    └── identifiability/          # ISOLATED environment -- see below
-        ├── Project.toml
-        └── check_seir_identifiability.jl
-```
+## Status
 
-## Extensibility model (why it's structured this way)
+Actively developed, not yet a tagged release (`version = "0.0.1-demo"`).
+The core simulation, fitting, bootstrap, and reporting machinery has been
+run successfully end-to-end, repeatedly, across every example in this
+repo, on real data. One component is a genuine exception and is called
+out explicitly where it lives: the structural-identifiability check in
+`checks/identifiability/` has been written but never actually executed.
 
-- **More variants**: add a new `<name>!(du, u, p, t)` function to
-  `models.jl` following the existing pattern (in-place ODE, `p` is a
-  NamedTuple or tuple of parameters). Nothing else needs to change unless
-  it also needs its own fitting spec (like `TVSEIRSpec` did for
-  `seir_tv!`/`seirv!`).
-- **Time-varying interventions** (weekly vaccine dosage, a contact-matrix
-  scaling factor, etc.): use `StepSchedule` / `weekly_schedule` from
-  `interventions.jl` in place of a constant for that parameter, and read it
-  inside the RHS via `at(p.param, t)` -- see `seir_tv!` and `seirv!` for
-  the pattern. This is the hook point for age-structured contact matrices
-  too eventually (see the comment at the bottom of `interventions.jl`),
-  though that's not implemented yet -- it needs a vector/matrix state,
-  which is a bigger structural change than a scalar schedule.
-- **New fitting scenarios** (e.g. fitting a dosage schedule to real
-  vaccination-campaign data, or freeing more than one segment/parameter at
-  once): follow the `TVSEIRSpec`/`fit_tv_seir` pattern -- a spec struct
-  holding fixed vs. free info, a `simulate_incidence_*` function, a
-  `negloglik_*` function, and a `fit_*` wrapper around NLopt COBYLA.
+The most important open issue, and the natural place to start if you're
+picking this up: **bootstrap-derived confidence/prediction intervals are
+under-covering** their nominal level across multiple examples — see
+[Known limitations](#known-limitations).
 
-## Performance metrics (template pattern)
+## What's here
 
-`src/metrics.jl` adds standard fit/forecast metrics, used consistently
-across examples instead of ad hoc inline calculations:
-- `mae` -- mean absolute error
-- `aicc` -- corrected AIC (from a fit's `.objval` NLL, free-parameter count,
-  and n)
-- `weighted_interval_score` / `wis_from_samples` -- the standard WIS metric
-  (Bracher et al. 2021), computed from a bootstrap sample pool (reuses
-  whatever pool was already built for `plot_fit`'s prediction band --
-  see below -- no extra simulation needed)
-- `interval_coverage` -- fraction of observations falling inside a stated
-  interval, to check whether a nominal 95% band is actually well-calibrated
-- `save_performance_metrics_csv` -- writes any NamedTuple/Dict of metrics
-  to a simple CSV
+**Model variants** (`src/models.jl`, `src/age_structured.jl`):
+- `sir!`, `seir!`, `seirs!` — constant-parameter compartmental models
+- `seir_tv!` — SEIR with a time-varying transmission rate, either
+  piecewise-constant (`StepSchedule`) or a smooth exponential transition
+  between two levels (`SmoothTransition`) — see `src/interventions.jl`
+- `seirv!` — SEIR with an explicit vaccination compartment
+- `seird!` — SEIR with an explicit death compartment, for fitting to
+  mortality data rather than case counts
+- Age-structured SEIR with a contact matrix and a time-varying
+  vaccination schedule (`age_structured.jl`), used with a real 6-band
+  age-structured contact matrix in the Jalisco examples
 
-`examples/plague_bombay_demo.jl` is the reference implementation for the
-CALIBRATION-ONLY case -- its "Performance metrics" section at the end is
-written to be copied directly into a new example: swap in that example's
-own `fitted`/observed-data/`noisy_pool`/`result.objval`/parameter-count
-variables and it produces the same `performance_metrics.csv` output.
+**Fitting** (`src/fit.jl`, `tv_fit.jl`, `smooth_tv_fit.jl`, `seird_fit.jl`):
+point estimation via NLopt (COBYLA), multi-start with a safe
+parallel-run-then-reduce pattern (`Threads.@threads`), Poisson or
+negative-binomial error models.
 
-`examples/flu1918_report_demo.jl` is the reference implementation for the
-CALIBRATION+FORECAST case -- it computes both confidence and prediction
-bands (and WIS/MAE/coverage) separately for the calibration window and the
-held-out forecast window, then saves them side by side via
-`save_metrics_comparison_csv` (metric name, calibration value, forecast
-value in one CSV). AICc is calibration-only by construction (tied to the
-fit's own likelihood) and is left blank in the forecast column.
+**Uncertainty** (`src/bootstrap.jl`): parametric bootstrap, and a
+distinction — supported throughout the reporting layer — between a
+*confidence band* (parameter uncertainty only) and a *prediction band*
+(parameter uncertainty plus observation noise); the latter is always the
+wider of the two and is what should be compared against actual future
+observations.
 
-Not every metric applies everywhere (WIS needs a sample pool from an
-uncertainty step, which not every example runs) -- use whichever subset is
-relevant. New examples needing this pattern generally don't need any new
-`src/` code -- just copy the relevant template's metrics section and swap
-in the new data/fit variables.
+**Metrics** (`src/metrics.jl`, `horizon_metrics.jl`): MAE, corrected AIC,
+Weighted Interval Score (Bracher et al. 2021), interval coverage checks,
+and per-horizon (expanding-window) forecast performance in the style of
+the MATLAB QuantDiffForecast toolbox's `computeforecastperformance.m`.
 
-**Two more pieces, both directly inspired by looking at what the MATLAB
-QuantDiffForecast toolbox actually saves**, added to `flu1918_report_demo.jl`:
+**Reporting** (`src/reporting.jl`): CSV export and `Plots.jl` figures
+(fit-vs-data, forecast-with-bands, bootstrap histograms), plus optional
+full-object bundles via `JLD2.jl` so a later session can reload the raw
+sample pools and re-plot or re-score without re-fitting.
 
-- **Per-horizon forecast metrics** (`src/horizon_metrics.jl`,
-  `forecast_metrics_by_horizon` / `save_horizon_metrics_csv`) -- ported
-  directly from that toolbox's `computeforecastperformance.m`: an
-  EXPANDING window from the start of the forecast (row h = performance
-  using only the first h forecast days, not the metric at day h alone),
-  showing how forecast quality degrades further out. Saved as
-  `forecast_metrics_by_horizon.csv`.
-- **Full results bundle** (`run_bundle.jld2`, via `JLD2.jl`) -- inspired by
-  that toolbox's `save(path, '-mat')`, which persists the entire workspace
-  rather than flattened CSV summaries. Saves real Julia objects (the raw
-  sample pools, spec, fit result, everything), so a later session can
-  reload it (`using JLD2; b = load(path, "bundle")`) and re-plot, re-score
-  at a different alpha level, or build a different horizon table -- all
-  without re-fitting or re-simulating anything. `JLD2` is deliberately NOT
-  added to `Project.toml` here (to avoid guessing its UUID) -- add it
-  yourself once with `using Pkg; Pkg.add("JLD2"); Pkg.resolve();
-  Pkg.instantiate()` before running an example that uses it.
+**Real datasets** (`data/`):
+- 1918 San Francisco influenza, daily incidence — R0 validated at 3.09
+  against both the MATLAB QuantDiffForecast toolbox and an independent
+  Python implementation
+- Jalisco, Mexico measles outbreak — weekly cases and vaccine doses by
+  age band, population, baseline susceptibility, and a real 6×6
+  age-structured contact matrix
+- 1905–06 Bombay plague, weekly deaths — the same series analyzed in
+  Kermack & McKendrick's original 1927 SIR paper
 
-## Saving results & plots
-
-`src/reporting.jl` adds:
-- `save_params_csv`, `save_series_csv`, `save_bootstrap_samples_csv` -- write
-  fitted parameters, fit/forecast series, and raw bootstrap replicates to CSV
-  (plain `DelimitedFiles`-based, no extra CSV-library dependency).
-- `plot_fit`, `plot_forecast`, `plot_bootstrap_histogram` -- standard
-  `Plots.jl` plots (fit-vs-data curve, forecast with an uncertainty ribbon
-  and the holdout data overlaid, bootstrap parameter histogram). Each
-  accepts an optional `saveto=` path to write a PNG directly.
-
-`examples/flu1918_report_demo.jl` runs the full pipeline (fit -> bootstrap
--> forecast) on the real flu1918 data and writes everything to
-`results/flu1918/`. Use it as the template for wiring reporting into any
-other fit.
-
-**Note**: `Plots.jl` is a new dependency here -- unlike everything else
-added so far, its first precompile is genuinely slow (a few minutes, not
-seconds). That's normal, not a sign something's broken.
-
-## Which examples save results
-
-- `plague_bombay_demo.jl` -- CALIBRATION-ONLY template (results/plague_bombay/)
-- `flu1918_report_demo.jl` -- CALIBRATION+FORECAST template, most complete
-  (results/flu1918/, includes per-horizon metrics + JLD2 bundle)
-- `flu1918_tv_demo.jl`, `flu1918_breakpoint_search_demo.jl`,
-  `flu1918_smooth_beta_demo.jl` -- point-fit results (params/series CSVs +
-  plots; no bootstrap in these scripts, so no CI/PI bands yet -- add one
-  following the plague demo's pattern if needed later), each to its own
-  results/<name>/ folder
-- `jalisco_fit.jl`, `jalisco_counterfactual.jl`, `jalisco_uncertainty.jl` --
-  results/jalisco/ and results/jalisco_scenarios/<scenario>/
-- `measles_seir_demo.jl`, `intervention_demo.jl`, `vaccination_demo.jl`,
-  `age_structured_smoke_test.jl` -- deliberately console-only: these are
-  synthetic recovery/sanity tests (validate the code against a KNOWN answer)
-  rather than analyses producing a deliverable worth keeping as a file
-
-## Running the demos
-
-```julia
-julia> include("examples/measles_seir_demo.jl")     # already confirmed working
-julia> include("examples/intervention_demo.jl")     # two-segment beta + bootstrap
-julia> include("examples/vaccination_demo.jl")       # seirv! mechanics check
-```
-
-`intervention_demo.jl` and `vaccination_demo.jl` reuse the same
-`Pkg.instantiate()`d environment as the original demo -- no new
-dependencies were added to the main `Project.toml`.
-
-## Identifiability check (separate, isolated environment)
-
-Deliberately NOT part of the main environment:
-`StructuralIdentifiability.jl` pulls in a computer-algebra backend that is
-a much heavier/riskier install than anything used so far, and there's no
-reason to risk destabilizing the environment that's already working.
+## Installation
 
 ```powershell
-cd checks/identifiability
+cd MechFit.jl
 julia --project=.
 ```
 ```julia
 julia> using Pkg
-julia> Pkg.add("StructuralIdentifiability")
-julia> include("check_seir_identifiability.jl")
+julia> Pkg.instantiate()
 ```
 
-This has **not been run or tested anywhere** (no network access to the
-Julia registry in the sandbox this was written in) -- treat the
-`@ODEmodel` macro call as a first draft; if the syntax has drifted from
-whatever version installs, that's the first thing to check.
+`JLD2` (used only by the full-bundle-saving examples) is intentionally
+not pinned in `Project.toml`, to avoid committing a possibly-wrong
+package UUID by hand. Add it once if you plan to use those examples:
 
-## Known gaps / still open
+```julia
+julia> Pkg.add("JLD2"); Pkg.resolve(); Pkg.instantiate()
+```
 
-- **CI/PI coverage is under-nominal across multiple examples** (flu1918_report:
-  11.8%/47.1% actual vs. 95% nominal; plague: 22.9%/57.1% vs. 95% nominal) --
-  the bootstrap-derived uncertainty bands throughout this repo are
-  systematically too narrow. This is the most important open issue right
-  now, likely candidates: the `:poisson` error model most examples use is
-  probably underdispersed relative to real case-count noise (the partially-
-  wired `:negbin1` option is a natural first thing to try), the bootstrap
-  not capturing parameter correlation, or too few effective degrees of
-  freedom. Treat any CI/PI band in this repo with real skepticism until
-  this is resolved.
-- Bootstrap/CI-PI bands for the non-constant-beta variants (`TVSEIRSpec`,
-  `SmoothTVSEIRSpec`, `SEIRDSpec`) are each hand-rolled per example
-  (`flu1918_report_demo.jl`, `plague_bombay_demo.jl`) rather than a single
-  reusable function like `bootstrap_seir` -- worth consolidating once the
-  coverage issue above is understood, so the fix lands in one place.
-- `seirv!` is forward-simulation only -- no fitting spec yet for recovering
-  a dosage schedule from real vaccination-campaign + case-count data (the
-  Jalisco age-structured vaccination fitting is a different code path,
-  `age_structured.jl`/`jalisco_data.jl`, not `seirv!`).
-- `seirv!` is non-leaky (all-or-nothing vaccine efficacy) -- a leaky
-  variant would need a separate "vaccinated but still partially
-  susceptible" flow.
-- Datasets from the BayesianFitForecast survey not yet brought in: Cumberland
-  1918 flu (longer daily series, reuses existing SEIR), Switzerland
-  (SEIUHRC, unreported+hospitalized compartments, power-law mixing), COVID
-  (SEIURC). Bundibugyo Ebola (from an earlier, separate survey) also still
-  unexplored.
-- Age structure / contact matrix: **implemented**, not a gap -- see
-  `age_structured.jl` + `jalisco_data.jl`, exercised by all three
-  `jalisco_*.jl` examples with the real 6x6 Jalisco contact matrix. (An
-  earlier version of this README listed this as not-yet-done; that was
-  stale and has been corrected.)
+For multi-threaded fitting and bootstrapping (recommended — several
+examples run dozens to hundreds of refits):
+
+```powershell
+julia --project=. --threads=auto
+```
+
+## Quick start
+
+```julia
+using .EpiMech   # after `include("src/EpiMech.jl")` if not run as a package
+
+# SEIRSpec(N, E0, I0, R0, fixed, free_names, lower, upper, x0, error_model)
+spec = SEIRSpec(
+    550_000.0, 0.0, 4.0, 0.0,             # N, E0, I0, R0
+    (σ = 1/1.9, γ = 1/4.1),               # incubation & infectious rates, fixed
+    (:β,), [0.01], [10.0], [0.6],         # free_names, lower, upper, x0 -- only β is fit
+    :poisson,
+)
+
+result = fit_seir(spec, t_grid, observed_cases)
+println("β̂ = $(result.xhat[1]),  R0̂ = $(result.R0)")
+```
+
+See `examples/plague_bombay_demo.jl` (calibration-only) and
+`examples/flu1918_report_demo.jl` (calibration + held-out forecast) for
+complete, runnable, fully-annotated pipelines — fit, bootstrap, plot,
+score, save — meant to be copied as templates for a new dataset or model.
+
+## Project structure
+
+```
+MechFit.jl/
+├── Project.toml
+├── src/
+│   ├── EpiMech.jl              # module entry point
+│   ├── interventions.jl        # StepSchedule, SmoothTransition (time-varying parameters)
+│   ├── models.jl                # sir!, seir!, seirs!, seird!, seir_tv!, seirv!, r0_sir
+│   ├── fit.jl                   # SEIRSpec, fit_seir (constant-β)
+│   ├── tv_fit.jl                # TVSEIRSpec, fit_tv_seir (piecewise-β)
+│   ├── smooth_tv_fit.jl         # SmoothTVSEIRSpec, fit_smooth_tv_seir (smooth-transition β)
+│   ├── seird_fit.jl             # SEIRDSpec, fit_seird (death-fitting)
+│   ├── bootstrap.jl             # bootstrap_seir
+│   ├── metrics.jl               # mae, aicc, WIS, interval_coverage, CSV savers
+│   ├── horizon_metrics.jl       # per-horizon (expanding-window) forecast metrics
+│   ├── reporting.jl             # CSV/plot output, confidence + prediction bands
+│   ├── age_structured.jl        # age-structured SEIR + vaccination
+│   └── jalisco_data.jl          # Jalisco dataset loader
+├── data/
+│   ├── curve-flu1918SF.txt
+│   ├── curve-plague-bombay.txt
+│   └── jalisco/                 # cases, doses, population, susceptibility, contact matrix
+├── examples/                    # see below
+├── checks/identifiability/      # isolated environment, see below — NOT YET RUN
+└── results/                     # generated output (gitignored)
+```
+
+## Examples
+
+| Example | Dataset | Demonstrates |
+|---|---|---|
+| `measles_seir_demo.jl` | synthetic | Parameter recovery sanity check |
+| `intervention_demo.jl` | synthetic | Piecewise-β fitting; a practical (not structural) non-identifiability case |
+| `vaccination_demo.jl` | synthetic | Vaccination-compartment mechanics |
+| `age_structured_smoke_test.jl` | synthetic | Age-structured model + indirect (herd) protection |
+| `flu1918_real_data_demo.jl` | 1918 SF flu | Basic real-data calibration + forecast |
+| `flu1918_report_demo.jl` | 1918 SF flu | **Full template**: fit, bootstrap, confidence/prediction bands, metrics, per-horizon scoring, JLD2 bundle |
+| `flu1918_tv_demo.jl` | 1918 SF flu | Piecewise-β vs. constant-β model comparison |
+| `flu1918_breakpoint_search_demo.jl` | 1918 SF flu | Searching for the best change-point rather than assuming one |
+| `flu1918_smooth_beta_demo.jl` | 1918 SF flu | Smooth-transition β as an alternative to a hard breakpoint |
+| `plague_bombay_demo.jl` | Bombay plague | **Full template**: death-fitting SEIRD, bootstrap, bands, metrics, JLD2 bundle |
+| `jalisco_fit.jl` | Jalisco measles | Age-structured fit with per-band reporting rates |
+| `jalisco_counterfactual.jl` | Jalisco measles | Vaccination counterfactual with direct/indirect effect decomposition |
+| `jalisco_uncertainty.jl` | Jalisco measles | Full statistical uncertainty propagation for the counterfactual |
+
+All examples save their output (CSVs, plots, and where applicable JLD2
+bundles) to `results/<example-name>/`.
+
+## Design notes
+
+- **Adding a model variant**: write a new `<name>!(du, u, p, t)` function
+  in `models.jl` (in-place ODE, `p` a NamedTuple/tuple of parameters).
+  It only needs its own fitting spec (following the `TVSEIRSpec`/
+  `fit_tv_seir` pattern) if the existing specs don't already fit its
+  parameter structure.
+- **Adding a time-varying parameter**: use `StepSchedule` or
+  `SmoothTransition` in place of a constant, read via `at(p.param, t)`
+  inside the RHS function.
+- **Adding a new fitting template**: copy the calibration-only pattern
+  (`plague_bombay_demo.jl`) or the calibration+forecast pattern
+  (`flu1918_report_demo.jl`) and swap in the new data/spec — no new
+  `src/` code is generally required.
+
+## Known limitations
+
+- **Bootstrap-derived intervals are under-covering their nominal level**
+  — the most important open issue. Measured directly via
+  `interval_coverage`: `flu1918_report_demo.jl`'s calibration/forecast
+  bands cover their nominal 95% at roughly 12%/38% (confidence) and
+  47%/46% (prediction); `plague_bombay_demo.jl`'s cover at roughly 23%
+  (confidence) and 57% (prediction). Uncertainty bands throughout this
+  repo should be treated with real skepticism until this is resolved.
+  Leading hypothesis: the `:poisson` error model used by most examples
+  is likely underdispersed relative to real case-count noise; `:negbin1`
+  is partially wired in and a natural first thing to try. Other
+  candidates: the bootstrap not capturing parameter correlation, or too
+  few effective degrees of freedom.
+- Bootstrap/interval-band code for the non-constant-β variants
+  (`TVSEIRSpec`, `SmoothTVSEIRSpec`, `SEIRDSpec`) is currently hand-rolled
+  per example rather than a single reusable function like
+  `bootstrap_seir` — worth consolidating once the coverage issue above
+  is understood.
+- `seirv!` is forward-simulation only; there's no fitting spec yet for
+  recovering a dosage schedule from real vaccination-campaign data (the
+  Jalisco vaccination fitting uses a separate code path,
+  `age_structured.jl`/`jalisco_data.jl`, not `seirv!`), and it's
+  non-leaky (all-or-nothing efficacy).
+- The identifiability check in `checks/identifiability/` (an isolated
+  environment, since `StructuralIdentifiability.jl` pulls in a much
+  heavier computer-algebra dependency than anything else here) has been
+  written but **never actually run** — treat it as an untested draft.
+- Additional real datasets surveyed but not yet integrated: Cumberland
+  1918 flu, Switzerland (richer SEIUHRC structure with unreported and
+  hospitalized compartments), COVID (SEIURC), Bundibugyo Ebola.
+
+## Sources & acknowledgments
+
+Several components are direct ports of, or validated against, existing
+tools:
+- The 1918 SF flu R0 validation and the per-horizon forecast metrics are
+  checked against / ported from the MATLAB **QuantDiffForecast**
+  toolbox (Chowell group).
+- The smooth-transition β and the death-fitting SEIRD model are ported
+  from the **BayesianFitForecast** R/Stan toolbox (models and datasets
+  only — the Bayesian/MCMC inference engine itself is not used here).
+- The age-structured vaccination-counterfactual pipeline is a Julia port
+  of an existing Python analysis of the Jalisco measles outbreak.
