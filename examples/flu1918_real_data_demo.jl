@@ -2,7 +2,7 @@
 #
 # Real-data test: the 1918 San Francisco influenza incidence series from
 # the original MATLAB QuantDiffForecast toolbox (Chowell), fit with
-# EpiMech's SEIR machinery using the SAME settings as the toolbox's
+# MechFit's SEIR machinery using the SAME settings as the toolbox's
 # options_fit_SEIR_flu1918.m: kappa=1/1.9 (incubation), gamma=1/4.1
 # (infectious period), N=550,000, all fixed except beta; I0 fixed to the
 # first data point; 17-day calibration window (the toolbox's
@@ -10,15 +10,15 @@
 #
 # Target to check against: earlier validation of a Python port of this
 # same toolbox against this same dataset found R0 = 3.09 (matches MATLAB
-# to 3 significant figures). If EpiMech's independently-built SEIR fit
+# to 3 significant figures). If MechFit's independently-built SEIR fit
 # lands near there too, that's a solid real-data sanity check -- three
-# independent implementations (MATLAB, Python port, EpiMech) agreeing.
+# independent implementations (MATLAB, Python port, MechFit) agreeing.
 
 using Pkg
 Pkg.activate(joinpath(@__DIR__, ".."))
 
-isdefined(Main, :EpiMech) || include(joinpath(@__DIR__, "..", "src", "EpiMech.jl"))
-using .EpiMech
+isdefined(Main, :MechFit) || include(joinpath(@__DIR__, "..", "src", "MechFit.jl"))
+using .MechFit
 using DelimitedFiles
 using Printf
 

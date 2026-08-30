@@ -13,7 +13,7 @@
 # NOTE ON OPTIMIZER: unlike the Python version's scipy.optimize.least_squares
 # (a proper Levenberg-Marquardt-style solver), this uses NLopt's
 # derivative-free COBYLA on the summed-square objective -- the same choice
-# already validated elsewhere in EpiMech, to avoid adding an unverified new
+# already validated elsewhere in MechFit, to avoid adding an unverified new
 # package. With 8 free parameters this may need more iterations/restarts
 # than the lower-dimensional fits elsewhere in this repo; if convergence
 # looks poor, that's the first thing to tune.
@@ -36,8 +36,8 @@
 using Pkg
 Pkg.activate(joinpath(@__DIR__, ".."))
 
-isdefined(Main, :EpiMech) || include(joinpath(@__DIR__, "..", "src", "EpiMech.jl"))
-using .EpiMech
+isdefined(Main, :MechFit) || include(joinpath(@__DIR__, "..", "src", "MechFit.jl"))
+using .MechFit
 using Random
 using Printf
 using Plots

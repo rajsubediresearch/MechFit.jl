@@ -12,17 +12,23 @@ Piecewise-constant function of time. `values[i]` applies for
 `breakpoints[i] <= t < breakpoints[i+1]`; `values[end]` applies from
 `breakpoints[end]` onward. `breakpoints[1]` should be the simulation start.
 
+Generic over the value type (`T<:Real`): plain `Float64` in normal
+(frequentist/NLopt) use, but also works with `ForwardDiff.Dual` when used
+inside a Bayesian (Turing.jl) model where the schedule's values are being
+sampled/differentiated -- breakpoints (times) are never differentiated, so
+they stay `Float64` regardless.
+
 Example -- a vaccination rate that turns on at day 28 and steps up at day 56:
     StepSchedule([0.0, 28.0, 56.0], [0.0, 0.01, 0.03])
 """
-struct StepSchedule
+struct StepSchedule{T<:Real}
     breakpoints::Vector{Float64}
-    values::Vector{Float64}
-    function StepSchedule(breakpoints::Vector{Float64}, values::Vector{Float64})
+    values::Vector{T}
+    function StepSchedule(breakpoints::Vector{Float64}, values::Vector{T}) where {T<:Real}
         length(breakpoints) == length(values) ||
             error("breakpoints and values must be the same length")
         issorted(breakpoints) || error("breakpoints must be sorted ascending")
-        new(breakpoints, values)
+        new{T}(breakpoints, values)
     end
 end
 
@@ -35,7 +41,7 @@ end
 
 # Allow a plain number to be used interchangeably with a StepSchedule,
 # so seir_tv!/seirv! work whether or not a given parameter is time-varying.
-at(v::Real, t::Real) = Float64(v)
+at(v::Real, t::Real) = v
 
 """
     weekly_schedule(weekly_values; week_length=7.0, start=0.0) -> StepSchedule
@@ -45,7 +51,7 @@ or a weekly contact-matrix scaling factor derived from mobility data).
 """
 function weekly_schedule(weekly_values::Vector{<:Real}; week_length::Real=7.0, start::Real=0.0)
     breakpoints = [start + week_length * (i - 1) for i in 1:length(weekly_values)]
-    return StepSchedule(Float64.(breakpoints), Float64.(weekly_values))
+    return StepSchedule(Float64.(breakpoints), collect(weekly_values))
 end
 
 # --- Future extension point (not implemented yet) ------------------------
@@ -80,13 +86,22 @@ BayesianFitForecast toolbox's own time_dependent_templates (used there for
 exactly this kind of scenario). Plugs directly into seir_tv! and any other
 model reading β via `at(p.β, t)` -- no model code changes needed, since
 `at` is the sole generic dispatch point by design.
+
+Generic over its parameter type (`T<:Real`), same reasoning as
+StepSchedule -- plain `Float64` for point-estimation, `ForwardDiff.Dual`
+transparently supported for Bayesian/AD-based fitting. The outer
+constructor promotes all four arguments to a common type first, so mixed
+calls like `SmoothTransition(0.8, 0.1, 0.1, 30.0)` (all literals, already
+the same type) and `SmoothTransition(dual1, dual2, dual3, dual4)` (all
+Duals, from a Turing model) both work without any change to calling code.
 """
-struct SmoothTransition
-    β0::Float64
-    β1::Float64
-    q::Float64
-    t_int::Float64
+struct SmoothTransition{T<:Real}
+    β0::T
+    β1::T
+    q::T
+    t_int::T
 end
+SmoothTransition(β0, β1, q, t_int) = SmoothTransition(promote(β0, β1, q, t_int)...)
 
 function at(s::SmoothTransition, t::Real)
     return t < s.t_int ? s.β0 : s.β1 + (s.β0 - s.β1) * exp(-s.q * (t - s.t_int))

@@ -11,27 +11,29 @@ for phenomenological (curve-shape) growth-model fitting: where
 GrowthFit fits the *shape* of an epidemic curve directly, MechFit fits
 the underlying transmission dynamics that produce that shape.
 
-> **Naming note:** the package internals (`Project.toml`'s `name` field,
-> the `module EpiMech` declaration, and every `using .EpiMech` in the
-> examples) still say `EpiMech`, the working name used during initial
-> development. The repository itself is `MechFit.jl`. Renaming the
-> internals to match is a planned, tracked cleanup — not yet done. Until
-> then, `EpiMech` in code and `MechFit.jl` in the repo name refer to the
-> same package.
+> **Naming note:** the internal module (`Project.toml`'s `name` field,
+> the `module MechFit` declaration, `src/MechFit.jl`, and every
+> `using .MechFit` in the examples) matches the repository name. This
+> wasn't always true — the internals were originally called `EpiMech`
+> during early development and were renamed to match once the repo went
+> public; if you're looking at an older clone or an old link, that's why.
 
 ## Status
 
 Actively developed, not yet a tagged release (`version = "0.0.1-demo"`).
-The core simulation, fitting, bootstrap, and reporting machinery has been
-run successfully end-to-end, repeatedly, across every example in this
-repo, on real data. One component is a genuine exception and is called
-out explicitly where it lives: the structural-identifiability check in
-`checks/identifiability/` has been written but never actually executed.
+The core simulation, fitting, bootstrap, reporting, AND Bayesian (Turing.jl)
+machinery have all been run successfully end-to-end, repeatedly, across
+real data — including a genuinely substantive Bayesian result (see
+[Bayesian arm](#bayesian-arm-separate-isolated-environment) below). One
+component remains a real exception: the structural-identifiability check
+in `checks/identifiability/` has been written but never actually executed.
 
-The most important open issue, and the natural place to start if you're
-picking this up: **bootstrap-derived confidence/prediction intervals are
-under-covering** their nominal level across multiple examples — see
-[Known limitations](#known-limitations).
+The most important thing to know if you're picking this up: the
+bootstrap-derived-interval coverage issue that was long this repo's top
+open item has been **substantially resolved for the flu1918 case**
+specifically, via the Bayesian arm — see
+[Known limitations](#known-limitations) for exactly what's resolved and
+what isn't yet.
 
 ## What's here
 
@@ -108,7 +110,7 @@ julia --project=. --threads=auto
 ## Quick start
 
 ```julia
-using .EpiMech   # after `include("src/EpiMech.jl")` if not run as a package
+using .MechFit   # after `include("src/MechFit.jl")` if not run as a package
 
 # SEIRSpec(N, E0, I0, R0, fixed, free_names, lower, upper, x0, error_model)
 spec = SEIRSpec(
@@ -133,7 +135,7 @@ score, save — meant to be copied as templates for a new dataset or model.
 MechFit.jl/
 ├── Project.toml
 ├── src/
-│   ├── EpiMech.jl              # module entry point
+│   ├── MechFit.jl              # module entry point
 │   ├── interventions.jl        # StepSchedule, SmoothTransition (time-varying parameters)
 │   ├── models.jl                # sir!, seir!, seirs!, seird!, seir_tv!, seirv!, r0_sir
 │   ├── fit.jl                   # SEIRSpec, fit_seir (constant-β)
@@ -152,6 +154,14 @@ MechFit.jl/
 │   └── jalisco/                 # cases, doses, population, susceptibility, contact matrix
 ├── examples/                    # see below
 ├── checks/identifiability/      # isolated environment, see below — NOT YET RUN
+├── bayesian/                    # isolated environment, see below — extensively tested
+│   ├── bayesian_common.jl               # shared reporting utilities
+│   ├── seir_bayesian_report_template.jl # reference template
+│   ├── seir_bayesian_flu1918_full_series.jl
+│   ├── seird_bayesian_plague.jl
+│   ├── jalisco_bayesian_report.jl       # pooled reporting rate
+│   ├── jalisco_bayesian_perband.jl      # full per-band posterior
+│   └── jalisco_bayesian_counterfactual.jl
 └── results/                     # generated output (gitignored)
 ```
 
@@ -191,20 +201,82 @@ bundles) to `results/<example-name>/`.
   (`flu1918_report_demo.jl`) and swap in the new data/spec — no new
   `src/` code is generally required.
 
+## Bayesian arm (separate, isolated environment)
+
+`bayesian/` adds a Turing.jl-based Bayesian counterpart to the
+frequentist fitting machinery, in an isolated environment (own
+`Project.toml`, same reasoning as `checks/identifiability/` — Turing's
+dependency tree is large). It reuses the actual model definitions from
+`src/models.jl`/`age_structured.jl` directly (`include`d, not duplicated)
+rather than maintaining a second copy of the forward model.
+
+Unlike the identifiability check, **this has been run extensively and
+successfully**, and produced a real, substantive finding: switching from
+a Poisson to a negative-binomial likelihood, combined with fixing the
+mean function's structural shape (constant-β → `SmoothTransition`),
+**resolved the coverage-under-nominal issue** that was this repo's top
+open item for a long time — see [Known limitations](#known-limitations)
+for the exact numbers and what's still open.
+
+| Script | Dataset | Demonstrates |
+|---|---|---|
+| `seir_bayesian_report_template.jl` | 1918 SF flu | **Reference template**: NUTS fit, posterior histograms, credible+prediction bands, convergence diagnostics, goodness-of-fit (MAE/WIS/coverage) — copy this for a new single-population dataset |
+| `seir_bayesian_flu1918_full_series.jl` | 1918 SF flu | Controlled comparison, constant-β vs. `SmoothTransition`-β (both NegBin) — the experiment that resolved the coverage issue: 55.6% coverage / WIS 4453 vs. 88.9% / WIS 59 |
+| `seird_bayesian_plague.jl` | Bombay plague | SEIRD Bayesian fit — an independent check on the frequentist fit's known non-convergence. Confirms it: β/σ/γ are individually poorly identified, but R0 (1.173 [1.134, 1.215]) and predictive performance (WIS 26, PI coverage 91.4%) are well-behaved regardless — a textbook practical-identifiability signature |
+| `jalisco_bayesian_report.jl` | Jalisco measles | Age-structured Bayesian fit, deliberately scope-reduced (one pooled reporting rate) for a first tractable attempt |
+| `jalisco_bayesian_perband.jl` | Jalisco measles | Full per-band reporting-rate posterior (9 parameters) — the best-converged fit in the repo (R-hat 0.999–1.005 across every parameter) |
+| `jalisco_bayesian_counterfactual.jl` | Jalisco measles | Bayesian direct/indirect protection decomposition — **replicates the herd-immunity finding**: the zero-dose 50+ band shows genuine indirect protection (130 [107, 161] cases averted, 100% of the checked posterior positive), with real posterior uncertainty instead of a bootstrap |
+
+`bayesian_common.jl` holds shared, reusable reporting utilities (posterior
+histograms, nested credible/prediction bands for both single-series and
+per-band/matrix data, WIS, convergence-diagnostics CSV export) used by
+every script above — the Bayesian-side counterpart to
+`src/metrics.jl`/`reporting.jl`.
+
+```powershell
+cd bayesian
+julia --project=.
+```
+```julia
+julia> using Pkg
+julia> Pkg.add(["Turing", "OrdinaryDiffEq", "Distributions", "Plots"])
+# the Jalisco scripts additionally need:
+julia> Pkg.add(["CSV", "DataFrames", "Dates"])
+julia> Pkg.resolve(); Pkg.instantiate()
+julia> include("seir_bayesian_report_template.jl")   # good first script to try
+```
+
+**A non-obvious pattern worth knowing if you extend this further**:
+several pieces on the frequentist side originally hardcoded `Float64`
+(`SmoothTransition`/`StepSchedule` in `interventions.jl`; an internal
+array in `age_structured.jl`'s solver). That's invisible under NLopt
+point-estimation, which never needs derivatives, but breaks immediately
+under Turing/ForwardDiff, which needs to carry `Dual` numbers through the
+same code paths. Every known instance has been found and fixed (generic
+type parameters, or inferring an array's element type from the solution
+rather than hardcoding `Float64`) — but if a new model variant hits
+`MethodError: no method matching Float64(::ForwardDiff.Dual...)` under
+Bayesian fitting, this is almost certainly the cause, and the fix is the
+same pattern each time.
+
 ## Known limitations
 
-- **Bootstrap-derived intervals are under-covering their nominal level**
-  — the most important open issue. Measured directly via
-  `interval_coverage`: `flu1918_report_demo.jl`'s calibration/forecast
-  bands cover their nominal 95% at roughly 12%/38% (confidence) and
-  47%/46% (prediction); `plague_bombay_demo.jl`'s cover at roughly 23%
-  (confidence) and 57% (prediction). Uncertainty bands throughout this
-  repo should be treated with real skepticism until this is resolved.
-  Leading hypothesis: the `:poisson` error model used by most examples
-  is likely underdispersed relative to real case-count noise; `:negbin1`
-  is partially wired in and a natural first thing to try. Other
-  candidates: the bootstrap not capturing parameter correlation, or too
-  few effective degrees of freedom.
+- **~~Bootstrap-derived intervals under-covering their nominal level~~ —
+  substantially resolved for the flu1918 case.** Via the Bayesian arm
+  (see above): switching to a negative-binomial likelihood plus fixing
+  the constant-β mean-function misspecification (`SmoothTransition`)
+  brought posterior-predictive coverage from ~47% (frequentist Poisson
+  baseline) up to 88.9%, and WIS down 75× (4453 → 59) on a controlled
+  comparison. The root cause was two separable, both-real problems:
+  Poisson underdispersion (partial fix on its own) and constant-β
+  mean-function misspecification (the dominant fix). **Scope of what's
+  resolved**: this specific finding is validated for flu1918 only, in the
+  Bayesian arm. The frequentist `bootstrap.jl`/`plague_bombay_demo.jl`
+  bands, and the Jalisco/plague cases generally, are unchanged and should
+  still be treated with real skepticism — porting the fix back into the
+  frequentist bootstrap machinery (or extending the Bayesian arm's
+  negative-binomial + flexible-mean-function combination to plague and
+  Jalisco) is a reasonable next step, not yet done.
 - Bootstrap/interval-band code for the non-constant-β variants
   (`TVSEIRSpec`, `SmoothTVSEIRSpec`, `SEIRDSpec`) is currently hand-rolled
   per example rather than a single reusable function like

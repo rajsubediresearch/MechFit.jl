@@ -9,8 +9,8 @@ using Pkg
 Pkg.activate(joinpath(@__DIR__, ".."))
 
 using Random
-isdefined(Main, :EpiMech) || include(joinpath(@__DIR__, "..", "src", "EpiMech.jl"))
-using .EpiMech
+isdefined(Main, :MechFit) || include(joinpath(@__DIR__, "..", "src", "MechFit.jl"))
+using .MechFit
 using OrdinaryDiffEq
 using Distributions
 using Plots

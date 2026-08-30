@@ -1,6 +1,6 @@
 # measles_seir_demo.jl
 #
-# Quick end-to-end sanity check for the EpiMech skeleton:
+# Quick end-to-end sanity check for the MechFit skeleton:
 #   1. Simulate a synthetic measles-like SEIR outbreak with KNOWN true
 #      parameters (so we know the right answer).
 #   2. Add Poisson observation noise to mimic reported-case data.
@@ -14,8 +14,8 @@ using Pkg
 Pkg.activate(joinpath(@__DIR__, ".."))
 
 using Random
-isdefined(Main, :EpiMech) || include(joinpath(@__DIR__, "..", "src", "EpiMech.jl"))
-using .EpiMech
+isdefined(Main, :MechFit) || include(joinpath(@__DIR__, "..", "src", "MechFit.jl"))
+using .MechFit
 using Distributions
 using Plots
 

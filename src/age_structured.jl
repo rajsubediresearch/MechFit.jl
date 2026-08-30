@@ -27,6 +27,12 @@ using LinearAlgebra
 Piecewise-linear, vector-valued (per age band) time-varying dose schedule.
 `weeks` are node times (e.g. 0,1,2,...); `doses` is (n_weeks x n_age).
 Clamped outside the node range, matching the Python make_vax_interpolator.
+
+NOTE: doses are always OBSERVED/FIXED input data (never a sampled/fitted
+parameter in any fit in this repo, frequentist or Bayesian), so this
+struct is intentionally NOT made generic the way SmoothTransition/
+StepSchedule were -- there's nothing here that would ever need to hold a
+ForwardDiff.Dual.
 """
 struct VaxSchedule
     weeks::Vector{Float64}
@@ -78,6 +84,18 @@ fixed : NamedTuple as built by default_fixed_age (plus optional :seed_week overr
 
 Returns weekly incidence (n_times x n_age) = new infections (E->I onset)
 per week per band. Pass return_states=true to also get the full state matrix.
+
+AD-COMPATIBLE: q (and, through it, S0/E0/I0/the whole solved trajectory)
+may be a plain Float64 (frequentist/NLopt fitting) or a ForwardDiff.Dual
+(Bayesian/Turing fitting) -- every array built here infers its element
+type from the values actually flowing through, rather than hardcoding
+Float64, so both cases work without any special-casing at the call site.
+This matters specifically in the seed_week > t_grid[1] branch below, which
+stitches together two solve phases -- an earlier version of this function
+pre-allocated that stitched array as `zeros(5*n_age, length(t_grid))`
+(implicitly Float64-only), which broke under Bayesian sampling with a
+"no method matching Float64(::ForwardDiff.Dual)" error, the same failure
+pattern found and fixed in SmoothTransition/StepSchedule.
 """
 function simulate_epidemic_age(params, fixed; vaccinate::Bool=true, return_states::Bool=false)
     C = fixed.C
@@ -119,8 +137,17 @@ function simulate_epidemic_age(params, fixed; vaccinate::Bool=true, return_state
         return nothing
     end
 
+    # T must be inferred from the DIFFERENTIATED parameters (q, seed) even
+    # though u0's VALUES don't depend on q -- OrdinaryDiffEq allocates its
+    # internal derivative buffer (du) to match u0's element type at
+    # ODEProblem-construction time, not dynamically per rhs! call. If u0
+    # stays plain Float64 while q/seed are ForwardDiff.Dual (Bayesian
+    # fitting), the very first RHS evaluation fails with the same
+    # "no method matching Float64(::Dual)" error already fixed elsewhere
+    # in this file -- this promotion is what prevents that at the source.
+    T = promote_type(typeof(q), typeof(seed))
     S0 = max.(S0f .* N, 0.0)
-    u0 = vcat(S0, zeros(n_age), zeros(n_age), N .- S0, zeros(n_age))
+    u0 = T.(vcat(S0, zeros(n_age), zeros(n_age), N .- S0, zeros(n_age)))
 
     tstops = Float64[]
     cb = nothing
@@ -152,10 +179,18 @@ function simulate_epidemic_age(params, fixed; vaccinate::Bool=true, return_state
     length(sol.u) == length(t_grid) ||
         error("age-structured solve failed or was truncated (got $(length(sol.u)) of $(length(t_grid)) points)")
 
-    Y = reduce(hcat, sol.u)   # (5*n_age) x n_times
+    T = eltype(sol.u[1])   # Float64 normally, ForwardDiff.Dual during Bayesian fitting --
+                            # inferring this (rather than hardcoding Float64) is what
+                            # lets derivative information flow through when this function
+                            # is called from inside a Turing @model.
+    Y = zeros(T, 5 * n_age, length(t_grid))
+    for (k, u) in enumerate(sol.u)
+        Y[:, k] .= u
+    end
+
     Ccum = Y[(4n_age + 1):(5n_age), :]
     incidence = permutedims(diff(Ccum, dims=2))          # (n_times-1) x n_age
-    incidence = vcat(zeros(1, n_age), incidence)          # pad to full length
+    incidence = vcat(zeros(T, 1, n_age), incidence)       # pad to full length
 
     return return_states ? (incidence, Y) : incidence
 end

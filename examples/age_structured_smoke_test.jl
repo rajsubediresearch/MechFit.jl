@@ -10,8 +10,8 @@
 using Pkg
 Pkg.activate(joinpath(@__DIR__, ".."))
 
-isdefined(Main, :EpiMech) || include(joinpath(@__DIR__, "..", "src", "EpiMech.jl"))
-using .EpiMech
+isdefined(Main, :MechFit) || include(joinpath(@__DIR__, "..", "src", "MechFit.jl"))
+using .MechFit
 using Random
 using Printf
 using CSV

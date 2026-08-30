@@ -9,7 +9,7 @@
 #     julia> using Pkg
 #     julia> Pkg.add("StructuralIdentifiability")
 #
-# This deliberately does NOT reuse the main EpiMech.jl environment --
+# This deliberately does NOT reuse the main MechFit.jl environment --
 # StructuralIdentifiability.jl pulls in a computer-algebra backend that is
 # a much heavier and riskier install than anything in the main project.
 # Keeping it isolated means a rough install here can't break the fitting

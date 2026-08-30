@@ -1,4 +1,4 @@
-module EpiMech
+module MechFit
 
 include("interventions.jl")   # StepSchedule / SmoothTransition / at() -- used by models.jl
 include("models.jl")          # sir!, seir!, seirs!, seird!, seir_tv!, seirv!, r0_sir
@@ -28,4 +28,4 @@ export plot_fit, plot_forecast, plot_bootstrap_histogram
 export VaxSchedule, vax_at, default_fixed_age, simulate_epidemic_age, R0_ngm
 export load_jalisco_inputs, JALISCO_BANDS, build_fixed
 
-end # module EpiMech
+end # module MechFit
