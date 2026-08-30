@@ -81,9 +81,14 @@ sample pools and re-plot or re-score without re-fitting.
 - 1905–06 Bombay plague, weekly deaths — the same series analyzed in
   Kermack & McKendrick's original 1927 SIR paper
 
-## Installation
+## Getting started
+
+**Prerequisites**: Julia 1.10 or later.
+
+**1. Clone and set up the main environment:**
 
 ```powershell
+git clone https://github.com/rajsubediresearch/MechFit.jl.git
 cd MechFit.jl
 julia --project=.
 ```
@@ -92,20 +97,62 @@ julia> using Pkg
 julia> Pkg.instantiate()
 ```
 
-`JLD2` (used only by the full-bundle-saving examples) is intentionally
-not pinned in `Project.toml`, to avoid committing a possibly-wrong
-package UUID by hand. Add it once if you plan to use those examples:
+This installs everything needed for the frequentist (NLopt-based) side of
+the toolbox. First-time precompilation of `Plots.jl` specifically takes a
+few minutes, not seconds — that's normal, not a sign anything's broken.
+
+**2. Run a fast first example**, to confirm the setup works before
+touching real data:
 
 ```julia
-julia> Pkg.add("JLD2"); Pkg.resolve(); Pkg.instantiate()
+julia> include("examples/measles_seir_demo.jl")
 ```
 
-For multi-threaded fitting and bootstrapping (recommended — several
-examples run dozens to hundreds of refits):
+This is a synthetic parameter-recovery check — it finishes in seconds and
+prints a fitted β close to the true β the synthetic data was generated
+from.
+
+**3. Try a real-data example:**
+
+```julia
+julia> include("examples/flu1918_real_data_demo.jl")
+```
+
+Should reproduce β̂≈0.7945, R0̂≈3.2576 on the 1918 SF flu data.
+
+**4. For anything that fits many times** (bootstraps, multistart
+optimization — most of the "full template" examples do this), restart
+Julia with multiple threads first:
 
 ```powershell
 julia --project=. --threads=auto
 ```
+
+**Common things worth knowing before diving in further:**
+
+- **Restart Julia after editing any `src/` file.** An
+  `isdefined(Main, :MechFit)` guard in each example prevents accidentally
+  reloading the module twice within one session, but that same guard
+  means edited source won't take effect until you actually restart.
+- **Always launch with `--project=.`** from the repo root, or Julia
+  activates your global environment instead and tries to pull in
+  unrelated packages.
+- **`JLD2`** (used only by the two full-template examples' bundle-saving
+  step) isn't pre-added, to avoid committing a possibly-wrong package
+  UUID by hand — add it once yourself if you want that specific feature:
+  `Pkg.add("JLD2"); Pkg.resolve(); Pkg.instantiate()`.
+- **The Bayesian arm (`bayesian/`) and the identifiability check
+  (`checks/identifiability/`) are separate, isolated environments**, each
+  with its own `Project.toml` — `cd` into them and run their own
+  `Pkg.instantiate()`/`Pkg.add()` steps rather than expecting the main
+  environment's packages to already be available there. See their own
+  sections below for exactly what each one needs.
+
+**Where to go from here**: `examples/flu1918_report_demo.jl` and
+`examples/plague_bombay_demo.jl` are the two most complete reference
+templates (full fit → bootstrap → bands → metrics → save pipeline) —
+good next things to read through once the basics work. The
+[Examples](#examples) table below lists everything, organized by dataset.
 
 ## Quick start
 
@@ -259,24 +306,53 @@ rather than hardcoding `Float64`) — but if a new model variant hits
 Bayesian fitting, this is almost certainly the cause, and the fix is the
 same pattern each time.
 
+## Structural identifiability check (separate, isolated environment)
+
+`checks/identifiability/` uses `StructuralIdentifiability.jl` to check
+whether the SEIR model's parameters are, in principle, recoverable from
+perfect (noise-free) observations of the model's output — a purely
+symbolic/algebraic question about the model equations, independent of
+any specific dataset. Kept in its own isolated environment for the same
+reason as the Bayesian arm: `StructuralIdentifiability.jl` pulls in a
+much heavier computer-algebra dependency than anything else in this
+repo, and there's no reason to risk destabilizing a working environment
+for a check that's conceptually unrelated to fitting or forecasting.
+
+```powershell
+cd checks/identifiability
+julia --project=.
+```
+```julia
+julia> using Pkg
+julia> Pkg.add("StructuralIdentifiability")
+julia> Pkg.resolve(); Pkg.instantiate()
+julia> include("check_seir_identifiability.jl")
+```
+
+**This has never actually been run** — see
+[Known limitations](#known-limitations). Treat the `@ODEmodel` macro call
+inside it as a first draft; if the syntax has drifted from whatever
+version of `StructuralIdentifiability.jl` installs, that's the first
+thing to check.
+
 ## Known limitations
 
-- **~~Bootstrap-derived intervals under-covering their nominal level~~ —
-  substantially resolved for the flu1918 case.** Via the Bayesian arm
-  (see above): switching to a negative-binomial likelihood plus fixing
-  the constant-β mean-function misspecification (`SmoothTransition`)
-  brought posterior-predictive coverage from ~47% (frequentist Poisson
-  baseline) up to 88.9%, and WIS down 75× (4453 → 59) on a controlled
-  comparison. The root cause was two separable, both-real problems:
-  Poisson underdispersion (partial fix on its own) and constant-β
-  mean-function misspecification (the dominant fix). **Scope of what's
-  resolved**: this specific finding is validated for flu1918 only, in the
-  Bayesian arm. The frequentist `bootstrap.jl`/`plague_bombay_demo.jl`
-  bands, and the Jalisco/plague cases generally, are unchanged and should
-  still be treated with real skepticism — porting the fix back into the
-  frequentist bootstrap machinery (or extending the Bayesian arm's
-  negative-binomial + flexible-mean-function combination to plague and
-  Jalisco) is a reasonable next step, not yet done.
+- **Bootstrap-derived interval coverage has been substantially resolved
+  for the flu1918 case.** Via the Bayesian arm (see above): switching to
+  a negative-binomial likelihood plus fixing the constant-β mean-function
+  misspecification (`SmoothTransition`) brought posterior-predictive
+  coverage from ~47% (frequentist Poisson baseline) up to 88.9%, and WIS
+  down 75× (4453 → 59) on a controlled comparison. The root cause was two
+  separable, both-real problems: Poisson underdispersion (partial fix on
+  its own) and constant-β mean-function misspecification (the dominant
+  fix). **Scope of what's resolved**: this specific finding is validated
+  for flu1918 only, in the Bayesian arm. The frequentist
+  `bootstrap.jl`/`plague_bombay_demo.jl` bands, and the Jalisco/plague
+  cases generally, are unchanged and should still be treated with real
+  skepticism — porting the fix back into the frequentist bootstrap
+  machinery (or extending the Bayesian arm's negative-binomial +
+  flexible-mean-function combination to plague and Jalisco) is a
+  reasonable next step, not yet done.
 - Bootstrap/interval-band code for the non-constant-β variants
   (`TVSEIRSpec`, `SmoothTVSEIRSpec`, `SEIRDSpec`) is currently hand-rolled
   per example rather than a single reusable function like
