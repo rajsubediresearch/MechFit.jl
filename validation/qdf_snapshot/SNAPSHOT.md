@@ -15,7 +15,7 @@ was validated against (see `../README.md`).
 | Contents | `LICENSE`, `README.md`, `forecasting_odemodels code/` (the stand-alone executable and docs images are omitted) |
 | Git tree hash of `forecasting_odemodels code/` | `c662b324abb1eb2f28d085e0dbe2df6e88e4a55a` |
 | License | CC0 1.0 Universal (public domain dedication), see `LICENSE` |
-| Software Heritage ID | `swh:1:rev:fcd7599a6742078b3afdd7c8da640e255a8bcf3d` (save requested 2026-11-10; resolves at https://archive.softwareheritage.org/swh:1:rev:fcd7599a6742078b3afdd7c8da640e255a8bcf3d once archived) |
+| Software Heritage ID | `swh:1:rev:fcd7599a6742078b3afdd7c8da640e255a8bcf3d` (archived 2026-11-10; https://archive.softwareheritage.org/swh:1:rev:fcd7599a6742078b3afdd7c8da640e255a8bcf3d) |
 
 Made with
 
