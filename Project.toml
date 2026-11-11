@@ -1,7 +1,7 @@
 name = "MechFit"
 uuid = "c3c36a1c-3b35-4c35-801b-378510c9379e"
 authors = ["Raj Subedi"]
-version = "0.0.1-demo"
+version = "0.1.0"
 
 [deps]
 OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"

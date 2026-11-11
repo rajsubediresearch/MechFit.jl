@@ -1,0 +1,56 @@
+cff-version: 1.2.0
+message: "If you use MechFit.jl, please cite it as below. If you use its QuantDiffForecast-compatible layer, please also cite QuantDiffForecast (see references)."
+title: "MechFit.jl: mechanistic epidemic model fitting, forecasting and ensembles in Julia"
+type: software
+version: 0.1.0
+date-released: 2026-11-11
+license: MIT
+repository-code: "https://github.com/rajsubediresearch/MechFit.jl"
+authors:
+  - family-names: Subedi
+    given-names: Raj
+    orcid: "https://orcid.org/0000-0002-9173-4063"
+    affiliation: "School of Public Health, Georgia State University"
+abstract: >-
+  MechFit.jl is a Julia toolbox for fitting compartmental (SIR/SEIR-family)
+  and phenomenological growth models to epidemic time series, with
+  parametric-bootstrap uncertainty, short-term forecasting, forecast scoring
+  (MAE, MSE, coverage, weighted interval score) and weighted forecast
+  ensembles. Its QuantDiffForecast-compatible layer reproduces the error
+  models, AICc and scoring conventions of the MATLAB QuantDiffForecast
+  toolbox and is validated against an archived version of it.
+keywords:
+  - epidemic forecasting
+  - compartmental models
+  - SEIR
+  - growth models
+  - ensemble forecasting
+  - parameter estimation
+  - Julia
+references:
+  - type: article
+    title: "Parameter estimation and forecasting with quantified uncertainty for ordinary differential equation models using QuantDiffForecast: A MATLAB toolbox and tutorial"
+    authors:
+      - family-names: Chowell
+        given-names: Gerardo
+      - family-names: Bleichrodt
+        given-names: Amanda
+      - family-names: Luo
+        given-names: Ruiyan
+    journal: "Statistics in Medicine"
+    year: 2024
+    volume: 43
+    issue: 9
+    start: 1826
+    end: 1848
+    doi: "10.1002/sim.10036"
+  - type: software
+    title: "QuantDiffForecast-Toolbox (commit fcd7599, 2026-11-09)"
+    authors:
+      - family-names: Chowell
+        given-names: Gerardo
+    repository-code: "https://github.com/gchowell/QuantDiffForecast-Toolbox"
+    commit: fcd7599a6742078b3afdd7c8da640e255a8bcf3d
+    identifiers:
+      - type: swh
+        value: "swh:1:rev:fcd7599a6742078b3afdd7c8da640e255a8bcf3d"

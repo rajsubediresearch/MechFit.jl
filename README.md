@@ -20,7 +20,7 @@ the underlying transmission dynamics that produce that shape.
 
 ## Status
 
-Actively developed, not yet a tagged release (`version = "0.0.1-demo"`).
+Actively developed. Current release: **v0.1.0** (see [Releases](https://github.com/rajsubediresearch/MechFit.jl/releases); cite via the "Cite this repository" button or `CITATION.cff`).
 The core simulation, fitting, bootstrap, reporting, AND Bayesian (Turing.jl)
 machinery have all been run successfully end-to-end, repeatedly, across
 real data — including a genuinely substantive Bayesian result (see
