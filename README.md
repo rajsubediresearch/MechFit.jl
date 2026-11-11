@@ -1,5 +1,7 @@
 # MechFit.jl
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24133692.svg)](https://doi.org/10.5281/zenodo.24133692)
+
 A Julia toolbox for mechanistic compartmental epidemic models —
 SIR/SEIR-family ODE models with constant, piecewise, and smoothly
 time-varying transmission rates, extended variants (death-fitting SEIRD,
@@ -20,7 +22,7 @@ the underlying transmission dynamics that produce that shape.
 
 ## Status
 
-Actively developed. Current release: **v0.1.0** (see [Releases](https://github.com/rajsubediresearch/MechFit.jl/releases); cite via the "Cite this repository" button or `CITATION.cff`).
+Actively developed. Current release: **v0.1.0** (see [Releases](https://github.com/rajsubediresearch/MechFit.jl/releases); cite via the "Cite this repository" button, `CITATION.cff`, or the Zenodo DOI [10.5281/zenodo.24133692](https://doi.org/10.5281/zenodo.24133692), which always points to the latest version; v0.1.0 specifically is [10.5281/zenodo.24133693](https://doi.org/10.5281/zenodo.24133693)).
 The core simulation, fitting, bootstrap, reporting, AND Bayesian (Turing.jl)
 machinery have all been run successfully end-to-end, repeatedly, across
 real data — including a genuinely substantive Bayesian result (see
