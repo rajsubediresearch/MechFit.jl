@@ -83,23 +83,35 @@ sample pools and re-plot or re-score without re-fitting.
 
 ## Getting started
 
-**Prerequisites**: Julia 1.10 or later.
+**Prerequisites**: Julia 1.10 or later (tested on 1.12.7 under Windows
+x86-64 and 1.13.3 under macOS on Apple Silicon) and git. The easiest way
+to install Julia is [juliaup](https://julialang.org/install/):
+`curl -fsSL https://install.julialang.org | sh` on macOS/Linux, or
+`winget install --name Julia --id 9NJNWW8PVKMN -e -s msstore` on Windows.
 
-**1. Clone and set up the main environment:**
+**1. Clone, install and test** (from a terminal):
 
-```powershell
+```bash
 git clone https://github.com/rajsubediresearch/MechFit.jl.git
 cd MechFit.jl
-julia --project=.
-```
-```julia
-julia> using Pkg
-julia> Pkg.instantiate()
+julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.test()'
 ```
 
+In Windows PowerShell or Command Prompt, use double quotes around the
+`-e` code instead of single quotes.
+
 This installs everything needed for the frequentist (NLopt-based) side of
-the toolbox. First-time precompilation of `Plots.jl` specifically takes a
-few minutes, not seconds — that's normal, not a sign anything's broken.
+the toolbox and runs the test suite, which ends with
+`Testing MechFit tests passed`. The first run precompiles a few hundred
+packages and takes several minutes (about 6 minutes on a recent desktop);
+later runs start in seconds. The repository does not ship a
+`Manifest.toml`, so Julia resolves current compatible package versions on
+your machine.
+
+If installation fails inside Julia's own standard library (for example
+`Precompiled image ... not available` while loading `Pkg`), the Julia
+install itself is damaged: run `juliaup update`, or try another version
+with `juliaup add 1.12` and `julia +1.12 --project=. ...`.
 
 **2. Run a fast first example**, to confirm the setup works before
 touching real data:
@@ -124,9 +136,22 @@ Should reproduce β̂≈0.7945, R0̂≈3.2576 on the 1918 SF flu data.
 optimization — most of the "full template" examples do this), restart
 Julia with multiple threads first:
 
-```powershell
+```bash
 julia --project=. --threads=auto
 ```
+
+**5. Check the QuantDiffForecast-compatible layer** (see
+[below](#quantdiffforecast-compatible-layer)); each takes a few minutes
+with threads:
+
+```bash
+julia --project=. --threads=auto validation/compare_qdf.jl
+julia --project=. --threads=auto examples/qdf_flu1918_ensemble.jl
+```
+
+The first prints MechFit's estimates next to the MATLAB QuantDiffForecast
+reference values (they should agree to about 4 significant figures); the
+second fits SEIR and four growth models and builds forecast ensembles.
 
 **Common things worth knowing before diving in further:**
 
@@ -137,10 +162,6 @@ julia --project=. --threads=auto
 - **Always launch with `--project=.`** from the repo root, or Julia
   activates your global environment instead and tries to pull in
   unrelated packages.
-- **`JLD2`** (used only by the two full-template examples' bundle-saving
-  step) isn't pre-added, to avoid committing a possibly-wrong package
-  UUID by hand — add it once yourself if you want that specific feature:
-  `Pkg.add("JLD2"); Pkg.resolve(); Pkg.instantiate()`.
 - **The Bayesian arm (`bayesian/`) and the identifiability check
   (`checks/identifiability/`) are separate, isolated environments**, each
   with its own `Project.toml` — `cd` into them and run their own
