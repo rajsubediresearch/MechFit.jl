@@ -1,0 +1,33 @@
+function fname = qdf_forecast_matname(cadfilename1, modelname, fit_index, fixI0, method1, dist1, tstart, tend, windowsize, horizon)
+%QDF_FORECAST_MATNAME  Name of the per-window forecast .mat written by the runners.
+%
+%   fname = qdf_forecast_matname(cadfilename1, model.name, vars.fit_index(j), ...
+%               params.fixI0, method1, dist1, tstart, tend, windowsize1, forecastingperiod)
+%
+%   Reproduces, character for character, the file name built by
+%   Run_Forecasting_ODEModel / Run_Fit_ODEModel for the 'Forecast-ODEModel-...'
+%   workspace dump: the data file name carries its .txt extension (the runners
+%   append it when missing) and the fitted-variable index appears as
+%   '-fit_index-<k>'. Readers such as run_ensemble call this helper instead of
+%   rebuilding the name, so a change in the convention is made in one place.
+%   The runners can call it too (see run_ensemble header).
+%
+% <============================================================================>
+% < Author: Gerardo Chowell  ==================================================>
+% <============================================================================>
+
+cadfilename1 = char(cadfilename1);
+if ~endsWith(cadfilename1, '.txt', 'IgnoreCase', true)
+    cadfilename1 = [cadfilename1 '.txt'];
+end
+fname = strcat('Forecast-ODEModel-', cadfilename1, ...
+    '-model_name-', char(modelname), ...
+    '-fit_index-', num2str(fit_index), ...
+    '-fixI0-', num2str(fixI0), ...
+    '-method-', num2str(method1), ...
+    '-dist-', num2str(dist1), ...
+    '-tstart-', num2str(tstart), ...
+    '-tend-', num2str(tend), ...
+    '-calibrationperiod-', num2str(windowsize), ...
+    '-forecastingperiod-', num2str(horizon), '.mat');
+end

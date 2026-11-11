@@ -194,7 +194,16 @@ MechFit.jl/
 │   ├── horizon_metrics.jl       # per-horizon (expanding-window) forecast metrics
 │   ├── reporting.jl             # CSV/plot output, confidence + prediction bands
 │   ├── age_structured.jl        # age-structured SEIR + vaccination
-│   └── jalisco_data.jl          # Jalisco dataset loader
+│   ├── jalisco_data.jl          # Jalisco dataset loader
+│   ├── error_models.jl          # QDF error models: normal, Poisson, NB1/NB2/NBd, Laplace
+│   ├── growth_models.jl         # EXP, GGM, GLM, Richards, GRM, logistic, Gompertz, QDF SEIR1
+│   ├── odefit.jl                # FitSpec, fit_ode, forecast_ode (QDF-compatible generic fitter)
+│   └── ensemble.jl              # ensemble weights, linear pool, flat/trend baselines
+├── test/runtests.jl             # tests for the QDF-compatible layer
+├── validation/                  # matched comparison with MATLAB QuantDiffForecast
+│   ├── qdf_snapshot/            # archived QDF code (commit fcd7599), the version validated against
+│   ├── matlab/                  # QDF options files + runner for the MATLAB side
+│   └── compare_qdf.jl           # Julia side; prints the side-by-side table
 ├── data/
 │   ├── curve-flu1918SF.txt
 │   ├── curve-plague-bombay.txt
@@ -229,9 +238,93 @@ MechFit.jl/
 | `jalisco_fit.jl` | Jalisco measles | Age-structured fit with per-band reporting rates |
 | `jalisco_counterfactual.jl` | Jalisco measles | Vaccination counterfactual with direct/indirect effect decomposition |
 | `jalisco_uncertainty.jl` | Jalisco measles | Full statistical uncertainty propagation for the counterfactual |
+| `qdf_flu1918_ensemble.jl` | 1918 SF flu | QDF-compatible SEIR (NB1) + GGM/GLM/RICH/GRM forecasts, four ensemble weightings, relative WIS vs. baselines |
 
 All examples save their output (CSVs, plots, and where applicable JLD2
 bundles) to `results/<example-name>/`.
+
+## QuantDiffForecast-compatible layer
+
+`error_models.jl`, `growth_models.jl`, `odefit.jl` and `ensemble.jl` follow
+the conventions of **QuantDiffForecast**, a MATLAB toolbox for parameter
+estimation and forecasting with ODE models
+([repository](https://github.com/gchowell/QuantDiffForecast-Toolbox);
+Chowell, Bleichrodt & Luo, *Statistics in Medicine* 2024,
+[doi:10.1002/sim.10036](https://doi.org/10.1002/sim.10036)), abbreviated
+**QDF** below, so the two give comparable numbers.
+
+> **Which QDF?** QDF has no tagged releases and is updated often. Everything
+> in this repository that says "QDF" refers to commit
+> [`fcd7599`](https://github.com/gchowell/QuantDiffForecast-Toolbox/tree/fcd7599a6742078b3afdd7c8da640e255a8bcf3d)
+> (2026-11-09). A copy of that version (CC0-licensed) is archived in
+> [`validation/qdf_snapshot/`](validation/qdf_snapshot/SNAPSHOT.md), so the
+> validation can be rerun even after QDF changes. Any ODE written as
+`rhs!(du, u, p, t)` with `p` a parameter **vector** goes through the same
+fitter, bootstrap, forecast and ensemble code; a `FitSpec` plays the role of a
+QDF options file.
+
+```julia
+spec = FitSpec(model=SEIR1_MODEL,
+               initial=[0.6, 1/1.9, 1/4.1, 550_000], lower=[0, 0, 0, 20], upper=[10, 2, 2, 1e6],
+               fixed=[false, true, true, true],          # QDF params.fixed
+               u0=[550_000 - 4, 0, 4, 0, 4],             # QDF vars.initial
+               fit_index=[5], fit_diff=[true],           # QDF vars.fit_index / fit_diff
+               error_model=:nb1,                         # QDF method1 = 3
+               composite=r0_seir1, composite_name="R0")
+res = forecast_ode(spec, t, y; window=17, horizon=10, B=300)
+print_ode_summary(res); save_ode_forecast(res, "results/out"); plot_ode_forecast(res)
+```
+
+**Error models** (`error_model`; alpha and d are estimated jointly with the
+model parameters):
+
+| MechFit | QDF method1 / dist1 | Objective | Bootstrap noise |
+|---|---|---|---|
+| `:normal` | 0 / 0 (or 1, 2 via `noise=:poisson`/`:nbfactor`) | sum of squares | Normal (or Poisson, or NB with empirical var/mean) |
+| `:poisson` | 1 / 1 | Poisson NLL | Poisson |
+| `:nb1` | 3 / 3 | NB, Var = μ + αμ | same NB |
+| `:nb2` | 4 / 4 | NB, Var = μ + αμ² | same NB |
+| `:nbd` | 5 / 5 | NB, Var = μ + αμᵈ | same NB |
+| `:laplace` | 6 / 6 | sum of absolute deviations | Laplace |
+
+**Models**: `SEIR1_MODEL` (QDF's SEIR1, cumulative onsets as state 5) and the
+phenomenological growth models `EXP_MODEL`, `GGM_MODEL`, `GLM_MODEL`,
+`RICH_MODEL`, `GRM_MODEL`, `LM_MODEL`, `GOM_MODEL` (one state, cumulative
+cases; parameters in QDF's order). Any other model: wrap it in
+`ODEModel(name, rhs!, param_labels, state_labels)`.
+
+**QDF conventions reproduced on purpose**: the incidence curve is
+`abs([C(1); diff(C)])`, so the first point is the initial cumulative value
+(and with `fix_I0=true` it equals the first observation); AICc counts free
+parameters + estimated initial conditions + noise parameters, with QDF's
+formula per error model; each bootstrap replicate is refitted from three
+starts (the point estimate, a jittered copy and a random point, as QDF's
+fit_model does; `boot_starts` changes this) and contributes 20 predictive
+draws; performance (MAE, MSE, 95% PI
+coverage, WIS with QDF's 11 alphas) is computed from those draws using
+MATLAB's quantile rule, with forecast rows averaging horizons 1..h.
+
+**Ensembles**: `run_ensemble(results, names; rule)` pools several
+`forecast_ode` results fitted to the same window, with weights `:equal`,
+`:akaike` (exp(−ΔAICc/2)), `:inverse_wis` or `:softmax_wis` (calibration
+WIS), and reports relative WIS against QDF's flat (forecast-hub) and
+log-linear trend baselines. The linear pool samples each member's draws in
+proportion to its weight (QDF's own pooling helper is not in its public repo,
+so this part is our implementation).
+
+**Relation to the older fitters**: `SEIRSpec`, `TVSEIRSpec`,
+`SmoothTVSEIRSpec` and `SEIRDSpec` are unchanged, so earlier results stay
+reproducible. They set the first incidence point to 0 rather than C(1), one
+reason their flu1918 R0 (≈3.26) differs from QDF's (≈3.08). New work should
+use `FitSpec`/`fit_ode`.
+
+**Validation**: matched runs against MATLAB QDF (SEIR, GGM, GLM; NB1;
+flu1918 days 1–17; B = 300) agree on point estimates and AICc to 4–5
+significant figures (SEIR: β 0.77183 vs 0.77184, R0 3.1645 in both, AICc
+−1688.099 in both); bootstrap scores differ by a few percent from the
+different random streams. Details, QDF reference values and scripts to
+reproduce both sides are in [`validation/`](validation/README.md), and
+`test/runtests.jl` re-checks the QDF optimum on every test run.
 
 ## Design notes
 
@@ -375,9 +468,16 @@ thing to check.
 
 Several components are direct ports of, or validated against, existing
 tools:
-- The 1918 SF flu R0 validation and the per-horizon forecast metrics are
-  checked against / ported from the MATLAB **QuantDiffForecast**
-  toolbox (Chowell group).
+- The 1918 SF flu R0 validation, the per-horizon forecast metrics and the
+  whole QDF-compatible layer (error models, `FitSpec`/`fit_ode`/
+  `forecast_ode`, growth models, ensembles) are ported from and validated
+  against the MATLAB **QuantDiffForecast** (QDF) toolbox, commit `fcd7599`
+  (2026-11-09): Chowell G, Bleichrodt A, Luo R. Parameter estimation and
+  forecasting with quantified uncertainty for ordinary differential equation
+  models using QuantDiffForecast: A MATLAB toolbox and tutorial.
+  *Statistics in Medicine*. 2024;43(9):1826–1848.
+  [doi:10.1002/sim.10036](https://doi.org/10.1002/sim.10036). If you use
+  this layer, please cite QDF as well.
 - The smooth-transition β and the death-fitting SEIRD model are ported
   from the **BayesianFitForecast** R/Stan toolbox (models and datasets
   only — the Bayesian/MCMC inference engine itself is not used here).

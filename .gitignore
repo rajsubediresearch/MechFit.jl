@@ -38,3 +38,8 @@ Thumbs.db
 # public repo, not because anything like this exists yet
 .env
 *.local.toml
+
+# MATLAB side of the QDF validation: QDF writes its outputs next to its own code,
+# and the comparison script writes a log -- regenerable, not source
+validation/qdf_snapshot/forecasting_odemodels code/output/
+validation/matlab/comparison_log.txt
